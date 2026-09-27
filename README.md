@@ -1,174 +1,88 @@
-# 🤖 Downstream AI — Multi-Agent Telemetry Explorer
+# Downstream AI
 
-> **A dynamic, interactive, and auto-layout dashboard for multi-agent AI telemetry, execution tracing, and payload inspection.**
+An interactive map for understanding how agents in a multi-agent system are connected. Load a JSON file, inspect each agent's input, output, prompt and tools, and follow the incoming and outgoing connections without drawing the graph by hand.
 
-![Downstream AI Dashboard](./docs/demo-screenshot.png)
+![Downstream AI graph](./docs/demo-screenshot.png)
 
----
+## What it does
 
-## 📌 Overview
+- Arranges agents automatically from their connections and optional `level` values. Switch between vertical and horizontal layouts.
+- Highlights an agent's incoming and outgoing connections when you select it.
+- Shows the agent's latest input, latest output, system prompt and tools in an inspector.
+- Lets you paste, edit, upload and export the graph JSON. The editor offers Monaco and a plain text mode.
+- Saves the applied graph, layout direction and theme in your browser's `localStorage`.
 
-**Downstream AI** is a state-of-the-art developer tool and architectural dashboard designed for AI engineers, software architects, and multi-agent researchers. It parses JSON telemetry configs and log streams from autonomous AI agent networks and automatically renders a clean, interactive directed graph.
+Downstream AI displays a graph and the input/output snapshots provided in the JSON. It does not collect live execution traces from an agent framework.
 
-Built with a **Local-First** philosophy (inspired by tools like *Excalidraw*), all computation, parsing, and caching happen directly inside the user's browser. Proprietary system prompts, sensitive customer payloads, and execution logs never leave your local machine.
+## Run locally
 
----
-
-## ✨ Key Features
-
-- 🗺️ **Automatic Directed Graph Layout (Dagre):** Smart topological positioning without requiring manual $(X, Y)$ coordinates.
-- 🎯 **Explicit Tier & Rank Control (`level`):** Align parallel agents on identical horizontal or vertical planes via the optional `"level"` attribute, backed by automated collision-prevention spacing.
-- ⚡ **Dynamic Edge Animation & Highlight:** Clicking any agent node animates and highlights its **Inbound** flows in glowing cyan (`#38bdf8`) and its **Outbound** flows in vibrant emerald (`#34d399`), while non-connected channels are dimmed for maximum cognitive clarity.
-- 🔍 **Embedded Monaco Code Inspector:** An accessible side drawer powered by the Visual Studio Code engine (Monaco Editor) in read-only mode, providing syntax highlighting and formatting for:
-  - `Last Input` (JSON payload)
-  - `Last Output` (JSON payload)
-  - `System Prompt` (Markdown / Plaintext)
-- 📝 **Live JSON Drawer & File Uploader:** Paste custom JSON directly, edit with either **Monaco** or **Native Text** mode, format with 1-click, or upload files via the native file browser or desktop **Drag & Drop**.
-- 💾 **Automatic Local Cache (Local-First):** Edits and layout preferences are automatically synchronized with the browser's `localStorage` — your work is preserved across refreshes and browser restarts without requiring an external server or account.
-- 🌓 **Dark / Light Theme & Layout Direction:** Seamless toggle between sleek Dark Mode and high-contrast Light Mode, plus instant switching between Vertical (Top-to-Bottom) and Horizontal (Left-to-Right) orientations.
-
----
-
-## 💻 System Requirements
-
-- **Node.js:** `>= 18.0.0` (LTS `v20.x` or `v22.x` recommended).
-- **Package Manager:** `npm` (bundled with Node.js `>= 9.x`), `pnpm`, or `yarn`.
-- **Browser:** Any modern evergreen browser with WebGL/Canvas support (Chrome, Edge, Firefox, Safari, Brave, Arc).
-- **Operating System:** Windows, macOS, or Linux.
-
----
-
-## 🚀 Quickstart & Installation
-
-### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-username/downstream-ai.git
-cd downstream-ai
-```
-
-### 2. Install Dependencies
-```bash
+git clone https://github.com/SalvatoreBrancato/Downstream.ai.git
+cd Downstream.ai
 npm install
-```
-
-### 3. Launch the Development Server
-```bash
 npm run dev
 ```
-Open your browser and navigate to:
-👉 `http://localhost:5173`
 
----
+Open the local URL printed by Vite (usually `http://localhost:5173/`).
 
-## 🛠️ Build & Production Commands
+To check the production build locally:
 
 ```bash
-# Build optimized production bundle to /dist
 npm run build
-
-# Preview the local production build
 npm run preview
 ```
 
----
+## Use your own graph
 
-## 📊 JSON Data Specification
+Open **Upload / Edit JSON** to paste a configuration or select a `.json` file, then choose **Apply Changes**. Click an agent to highlight its connections; use its Input, Output, Prompt and Tools buttons to inspect its data. **Reset to Sample** loads the included example.
 
-Downstream AI parses standard telemetry configs structured as follows:
+The smallest useful configuration has an `agents` array and a `flows` array:
 
 ```json
 {
   "agents": [
     {
-      "id": "agent_1",
-      "name": "Data Quality Analyst",
+      "id": "researcher",
+      "name": "Researcher",
       "level": 0,
-      "role": "Ingestion & Sanitization",
-      "system_prompt": "You are an expert analyst validating and deduplicating financial feeds...",
-      "last_input": {
-        "raw_data": { "ticker": "NVDA", "revenue": "35.1B" },
-        "source": "API"
-      },
-      "last_output": {
-        "clean_data": { "symbol": "NVDA", "normalized_revenue": 35100000000 },
-        "status": "success"
-      }
+      "description": "Collects source material",
+      "system_prompt": "Find relevant information.",
+      "last_input": { "topic": "Example" },
+      "last_output": { "notes": "Summary of findings" },
+      "web_search": true,
+      "tools": [
+        { "name": "search", "description": "Searches the web" }
+      ]
     },
     {
-      "id": "agent_2",
-      "name": "Sector Specialist",
+      "id": "writer",
+      "name": "Writer",
       "level": 1,
-      "role": "Vertical Intelligence",
-      "system_prompt": "Analyze clean data for semiconductor market share and peers...",
-      "last_input": { "clean_data": { "symbol": "NVDA" }, "sector": "Tech" },
-      "last_output": { "insights": "Strong expansion driven by Blackwell clusters..." }
-    },
-    {
-      "id": "agent_3",
-      "name": "Risk Evaluator",
-      "level": 1,
-      "role": "Volatility & Stress Testing",
-      "system_prompt": "Evaluate macroeconomic volatility and customer concentration...",
-      "last_input": { "insights": "..." },
-      "last_output": { "risk_rating": "Moderate-High" }
-    },
-    {
-      "id": "agent_4",
-      "name": "Executive Synthesizer",
-      "level": 2,
-      "role": "Report & Decision Engine",
-      "system_prompt": "Synthesize data quality, sector intelligence, and risk evaluation into executive brief...",
-      "last_input": { "sector_insights": "...", "risk_profile": "..." },
-      "last_output": { "action_required": "APPROVE_ALLOCATION_TIER_1" }
+      "last_input": { "notes": "Summary of findings" },
+      "last_output": { "draft": "First draft" }
     }
   ],
   "flows": [
-    {
-      "source": "agent_1",
-      "target": "agent_2",
-      "label": "Clean Data"
-    },
-    {
-      "source": "agent_2",
-      "target": "agent_3",
-      "label": "Sector Insights"
-    },
-    {
-      "source": "agent_2",
-      "target": "agent_4",
-      "label": "Strategy Matrix"
-    },
-    {
-      "source": "agent_3",
-      "target": "agent_4",
-      "label": "Risk Matrix"
-    }
+    { "source": "researcher", "target": "writer", "label": "Research notes" }
   ]
 }
 ```
 
-> **Note on `"level"`:**
-> If omitted or empty (`null`, `""`), node hierarchy is automatically determined by Dagre's topological dependencies. When specified as an integer (e.g. `0`, `1`, `2`), nodes sharing the same level are locked side-by-side on the same tier with automatic anti-overlap spacing.
+| Field | Purpose |
+| --- | --- |
+| `agents` | Array of agents. Each agent needs a unique `id`; `name` is the displayed title. |
+| `flows` | Directed connections. `source` and `target` refer to agent IDs; `label` is optional. |
+| `level` | Optional numeric tier. Agents on the same tier are placed together. |
+| `description`, `system_prompt` | Optional agent details. |
+| `last_input`, `last_output` | Optional payload snapshots shown in the inspector. |
+| `web_search`, `tools` | Optional capability indicator and list of tools. |
 
----
+See [sampleTelemetry.json](./src/data/sampleTelemetry.json) for a larger example. The app currently checks that `agents` is an array, but does not fully validate agent IDs or flow references; use valid IDs in your JSON.
 
-## 🏗️ Architecture & Technology Stack
+## Data and privacy
 
-- **Core Framework:** [React 18](https://react.dev/) + [Vite](https://vitejs.dev/)
-- **Node Graph & Flow Canvas:** [@xyflow/react](https://reactflow.dev/) *(formerly React Flow)*
-- **Graph Auto-Layout:** [dagre](https://github.com/dagrejs/dagre)
-- **Code Editor:** [@monaco-editor/react](https://github.com/suren-atoyan/monaco-react) *(VS Code editor engine)*
-- **Styling & Design System:** [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) design tokens
-- **Icons:** [Lucide React](https://lucide.dev/)
+Graph JSON is parsed in the browser and the applied graph is stored in that browser's `localStorage`. The app has no backend endpoint for uploading graph data. The page does request Google Fonts, and Monaco's default loader requests editor assets from a CDN. Keep this in mind when using sensitive prompts or payloads, especially on a shared browser.
 
----
+## Built with
 
-## 🔒 Privacy & Local-First Philosophy
-
-Downstream AI operates 100% client-side. No telemetry payloads, system prompts, or proprietary data are ever transmitted to third-party cloud servers or tracking endpoints. Everything is parsed and persisted strictly in your browser's local sandbox.
-
----
-
-## 📄 License
-
-Distributed under the **MIT License**. See `LICENSE` for details.
+[React](https://react.dev/), [Vite](https://vite.dev/), [React Flow](https://reactflow.dev/), [Dagre](https://github.com/dagrejs/dagre), [Monaco Editor](https://github.com/suren-atoyan/monaco-react) and [Tailwind CSS](https://tailwindcss.com/).
