@@ -9,7 +9,7 @@ An interactive map for understanding how agents in a multi-agent system are conn
 - Arranges agents automatically from their connections and optional `level` values. Switch between vertical and horizontal layouts.
 - Highlights an agent's incoming and outgoing connections when you select it.
 - Shows the agent's latest input, latest output, system prompt and tools in an inspector.
-- Lets you paste, edit, upload and export the graph JSON. The editor offers Monaco and a plain text mode.
+- Lets you paste, edit, upload and export the graph JSON. The editor offers a JSON code view and a form for agents and connections.
 - Saves the applied graph, layout direction and theme in your browser's `localStorage`.
 
 Downstream AI displays a graph and the input/output snapshots provided in the JSON. It does not collect live execution traces from an agent framework.
@@ -34,7 +34,7 @@ npm run preview
 
 ## Use your own graph
 
-Open **Upload / Edit JSON** to paste a configuration or select a `.json` file, then choose **Apply Changes**. Click an agent to highlight its connections; use its Input, Output, Prompt and Tools buttons to inspect its data. **Reset to Sample** loads the included example.
+Open **Upload / Edit JSON** to paste a configuration, select a `.json` file, or switch to **Form** to add agents and connect them with **Arriva da** and **Invia a**. Both views edit the same draft. Choose **Apply Changes** to update the graph. Click an agent to highlight its connections; use its Input, Output, Prompt and Tools buttons to inspect its data. **Reset to Sample** loads the included example.
 
 The smallest useful configuration has an `agents` array and a `flows` array:
 
@@ -77,7 +77,7 @@ The smallest useful configuration has an `agents` array and a `flows` array:
 | `last_input`, `last_output` | Optional payload snapshots shown in the inspector. |
 | `web_search`, `tools` | Optional capability indicator and list of tools. |
 
-See [sampleTelemetry.json](./src/data/sampleTelemetry.json) for a larger example. The app currently checks that `agents` is an array, but does not fully validate agent IDs or flow references; use valid IDs in your JSON.
+See [sampleTelemetry.json](./src/data/sampleTelemetry.json) for a larger example. Before applying or exporting, the app checks agent IDs, names, nonnegative levels, and connection references. Input and output can contain plain text or structured JSON values.
 
 ## Data and privacy
 

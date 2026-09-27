@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useTelemetry } from "@/context/TelemetryContext";
 import {
   Upload,
@@ -15,15 +14,16 @@ import {
   X,
   Trash2,
   Code2,
-  AlignLeft,
+  ListPlus,
 } from "lucide-react";
 import sampleData from "@/data/sampleTelemetry.json";
+import SchemaForm, { makePayloadDrafts, validateSchema } from "@/components/SchemaForm";
 
 /**
  * JsonUploaderModal renders a full-height offcanvas drawer.
  * Runs Monaco Editor in native uncontrolled mode to eliminate any React re-render
  * race conditions (no cursor jumping, no deletion glitches, instant 60fps typing).
- * Also provides an alternative standard Textarea view for maximum reliability.
+ * Also provides a structured form for editing agents and flows.
  */
 export default function JsonUploaderModal({ isOpen, onClose }) {
   const { telemetryData, loadCustomTelemetry, resetToDefaultTelemetry, theme } =
@@ -32,8 +32,9 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [editorMode, setEditorMode] = useState("monaco"); // 'monaco' | 'textarea'
-  const [textareaContent, setTextareaContent] = useState("");
+  const [editorMode, setEditorMode] = useState("monaco"); // 'monaco' | 'form'
+  const [formData, setFormData] = useState(telemetryData);
+  const [payloadDrafts, setPayloadDrafts] = useState(() => makePayloadDrafts(telemetryData));
 
   const editorRef = useRef(null);
   const draftRef = useRef("");
@@ -44,7 +45,8 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
     if (isOpen) {
       const formatted = JSON.stringify(telemetryData, null, 2);
       draftRef.current = formatted;
-      setTextareaContent(formatted);
+      setFormData(telemetryData);
+      setPayloadDrafts(makePayloadDrafts(telemetryData));
 
       if (editorRef.current) {
         editorRef.current.setValue(formatted);
@@ -65,34 +67,56 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
 
   // Helper to extract current value from active editor mode
   const getCurrentValue = () => {
-    if (editorMode === "monaco" && editorRef.current) {
-      return editorRef.current.getValue();
-    }
-    return textareaContent;
+    if (editorMode === "form") return JSON.stringify(formData, null, 2);
+    return editorRef.current?.getValue() ?? draftRef.current;
+  };
+
+  const getValidatedData = () => {
+    const parsed = editorMode === "form" ? formData : JSON.parse(getCurrentValue());
+    const validationError = validateSchema(parsed);
+    if (validationError) throw new Error(validationError);
+    return parsed;
   };
 
   // Helper to set value on both editors
   const setCurrentValue = (text) => {
     draftRef.current = text;
-    setTextareaContent(text);
     if (editorRef.current) {
       editorRef.current.setValue(text);
     }
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed.agents)) {
+        setFormData(parsed);
+        setPayloadDrafts(makePayloadDrafts(parsed));
+      }
+    } catch {
+      // The JSON editor may contain an incomplete draft.
+    }
   };
 
-  // Switch between Monaco Editor and native Textarea
+  // Switch between code and form without dropping either draft.
   const handleToggleMode = (mode) => {
     if (mode === editorMode) return;
-    if (mode === "textarea") {
-      const val =
-        editorRef.current ? editorRef.current.getValue() : textareaContent;
-      draftRef.current = val;
-      setTextareaContent(val);
+    try {
+      if (mode === "form") {
+        const parsed = JSON.parse(getCurrentValue());
+        const validationError = validateSchema(parsed);
+        if (validationError) throw new Error(validationError);
+        draftRef.current = getCurrentValue();
+        setFormData(parsed);
+        setPayloadDrafts(makePayloadDrafts(parsed));
       editorRef.current = null;
-    } else {
-      draftRef.current = textareaContent;
+      } else {
+        const validationError = validateSchema(formData);
+        if (validationError) throw new Error(validationError);
+        draftRef.current = JSON.stringify(formData, null, 2);
+      }
+      setEditorMode(mode);
+      setError(null);
+    } catch (err) {
+      setError(`Impossibile cambiare vista: ${err.message}`);
     }
-    setEditorMode(mode);
   };
 
   // 1. File Upload from disk (.json)
@@ -114,9 +138,8 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
       try {
         const text = event.target?.result;
         const parsed = JSON.parse(text);
-        if (!parsed.agents || !Array.isArray(parsed.agents)) {
-          throw new Error("JSON must contain an 'agents' array");
-        }
+        const validationError = validateSchema(parsed);
+        if (validationError) throw new Error(validationError);
         const formatted = JSON.stringify(parsed, null, 2);
         setCurrentValue(formatted);
         setError(null);
@@ -159,8 +182,7 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
   // Format JSON to 2 spaces indentation
   const handleFormat = () => {
     try {
-      const current = getCurrentValue();
-      const parsed = JSON.parse(current);
+      const parsed = getValidatedData();
       const formatted = JSON.stringify(parsed, null, 2);
       setCurrentValue(formatted);
       setError(null);
@@ -222,6 +244,7 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
   // Download JSON to file
   const handleDownload = () => {
     try {
+      getValidatedData();
       const current = getCurrentValue();
       const blob = new Blob([current], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -231,15 +254,14 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error(err);
+      setError(`Impossibile esportare: ${err.message}`);
     }
   };
 
   // Apply to graph
   const handleApply = () => {
     try {
-      const current = getCurrentValue();
-      const parsed = JSON.parse(current);
+      const parsed = getValidatedData();
       loadCustomTelemetry(parsed);
       setSuccess("Graph updated successfully!");
       setError(null);
@@ -248,7 +270,7 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
         onClose();
       }, 600);
     } catch (err) {
-      setError(`JSON syntax error: ${err.message}`);
+      setError(`Impossibile applicare lo schema: ${err.message}`);
     }
   };
 
@@ -338,7 +360,7 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
           {/* Quick Toolbar */}
           <div className="flex items-center justify-between pt-1 text-xs text-slate-500 dark:text-slate-400">
             <div className="flex items-center gap-2">
-              {/* Toggle Monaco vs Textarea */}
+              {/* Toggle JSON editor vs form */}
               <div className="inline-flex rounded-md p-0.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
@@ -351,26 +373,22 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
                   title="Monaco code editor with syntax highlighting"
                 >
                   <Code2 className="w-3 h-3" />
-                  <span>Monaco</span>
+                  <span>JSON</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleToggleMode("textarea")}
+                  onClick={() => handleToggleMode("form")}
                   className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                    editorMode === "textarea" ?
+                    editorMode === "form" ?
                       "bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 shadow-sm"
                     : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
                   }`}
-                  title="Native simple text editor"
+                  title="Edit agents and connections with a form"
                 >
-                  <AlignLeft className="w-3 h-3" />
-                  <span>Text</span>
+                  <ListPlus className="w-3 h-3" />
+                  <span>Form</span>
                 </button>
               </div>
-
-              <Badge variant="purple" className="font-mono text-[10px]">
-                Supports &quot;level&quot; • &quot;description&quot; • &quot;tools&quot; • &quot;web_search&quot;
-              </Badge>
             </div>
 
             <div className="flex items-center gap-3">
@@ -469,15 +487,11 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
                 selectOnLineNumbers: true,
               }}
             />
-          : <textarea
-              value={textareaContent}
-              onChange={(e) => {
-                draftRef.current = e.target.value;
-                setTextareaContent(e.target.value);
-              }}
-              placeholder="Paste or type your JSON here..."
-              spellCheck="false"
-              className="w-full h-full p-4 font-mono text-xs bg-transparent border-0 outline-none resize-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400 leading-relaxed select-text"
+          : <SchemaForm
+              data={formData}
+              onChange={setFormData}
+              payloadDrafts={payloadDrafts}
+              onPayloadDraftsChange={setPayloadDrafts}
             />
           }
         </div>
