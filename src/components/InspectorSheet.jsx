@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import {
   Sheet,
@@ -23,6 +23,7 @@ import {
   Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { countTokens } from "@/utils/tokenCounter";
 
 /**
  * InspectorSheet displays an offcanvas drawer with formatted JSON payloads,
@@ -35,6 +36,8 @@ export default function InspectorSheet() {
 
   const [copied, setCopied] = useState(false);
   const [toolsViewMode, setToolsViewMode] = useState("cards"); // 'cards' | 'json'
+  const [tokenCount, setTokenCount] = useState(null);
+  const [tokenError, setTokenError] = useState(false);
 
   // Compute displayed content and language based on active tab
   const { content, language, tabLabel } = useMemo(() => {
@@ -86,6 +89,26 @@ export default function InspectorSheet() {
       icon: Terminal,
     };
   }, [agent, tab]);
+
+  useEffect(() => {
+    if (!isOpen || !agent || tab === "tools") return;
+
+    let cancelled = false;
+    setTokenCount(null);
+    setTokenError(false);
+    const text = tab === "system_prompt" && !agent.system_prompt ? "" : content;
+
+    countTokens(text)
+      .then((count) => {
+        if (!cancelled) setTokenCount(count);
+      })
+      .catch((error) => {
+        console.error("Failed to count tokens:", error);
+        if (!cancelled) setTokenError(true);
+      });
+
+    return () => { cancelled = true; };
+  }, [isOpen, agent, tab, content]);
 
   const handleCopy = async () => {
     if (!content) return;
@@ -241,7 +264,7 @@ export default function InspectorSheet() {
         </SheetHeader>
 
         {/* Content Meta Bar */}
-        <div className="px-6 py-2 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+        <div className="px-6 py-2 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
           <div className="flex items-center gap-2">
             <FileCode2 className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" />
             <span className="font-semibold text-slate-800 dark:text-slate-300">
@@ -282,8 +305,20 @@ export default function InspectorSheet() {
                 </button>
               </div>
             )}
-            <div className="font-mono text-[11px] text-slate-500">
-              {content.length} characters
+            <div className="font-mono text-[11px] text-slate-500 flex items-center gap-2 whitespace-nowrap">
+              {tab !== "tools" && (
+                <>
+                  <span title="Estimated from this tab's text or JSON using the OpenAI o200k_base tokenizer; actual model usage may differ.">
+                    {tokenError
+                      ? "Tokens unavailable"
+                      : tokenCount === null
+                        ? "≈ … tokens"
+                        : `≈ ${tokenCount.toLocaleString()} tokens`}
+                  </span>
+                  <span className="text-slate-400 dark:text-slate-600">•</span>
+                </>
+              )}
+              <span>{content.length.toLocaleString()} characters</span>
             </div>
           </div>
         </div>

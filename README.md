@@ -9,6 +9,7 @@ An interactive map for understanding how agents in a multi-agent system are conn
 - Arranges agents automatically from their connections and optional `level` values. Switch between vertical and horizontal layouts.
 - Highlights an agent's incoming and outgoing connections when you select it.
 - Shows the agent's latest input, latest output, system prompt and tools in an inspector.
+- Estimates tokens for the inspector's Input, Output and Prompt tabs with the `o200k_base` tokenizer; counts are based on their text or JSON and may differ from a model provider's usage.
 - Lets you paste, edit, upload and export the graph JSON. The editor offers a JSON code view and a form for agents and connections.
 - Saves the applied graph, layout direction and theme in your browser's `localStorage`.
 
@@ -85,4 +86,4 @@ Graph JSON is parsed in the browser and the applied graph is stored in that brow
 
 ## Built with
 
-[React](https://react.dev/), [Vite](https://vite.dev/), [React Flow](https://reactflow.dev/), [Dagre](https://github.com/dagrejs/dagre), [Monaco Editor](https://github.com/suren-atoyan/monaco-react) and [Tailwind CSS](https://tailwindcss.com/).
+[React](https://react.dev/), [Vite](https://vite.dev/), [React Flow](https://reactflow.dev/), [Dagre](https://github.com/dagrejs/dagre), [Monaco Editor](https://github.com/suren-atoyan/monaco-react), [js-tiktoken](https://github.com/dqbd/tiktoken) and [Tailwind CSS](https://tailwindcss.com/).
