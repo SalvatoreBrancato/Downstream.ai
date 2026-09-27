@@ -42,7 +42,7 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
 
   dagre.layout(dagreGraph);
 
-  const rankStep = (isHorizontal ? NODE_WIDTH : NODE_HEIGHT) + RANK_SEP;
+  const dagreRankStep = (isHorizontal ? NODE_WIDTH : NODE_HEIGHT) + RANK_SEP;
   const breadthStep = (isHorizontal ? NODE_HEIGHT : NODE_WIDTH) + NODE_SEP;
 
   // Extract explicit levels to find min reference
@@ -80,7 +80,7 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
       const naturalStep = isHorizontal
         ? pos.x - NODE_WIDTH / 2
         : pos.y - NODE_HEIGHT / 2;
-      effectiveLevel = Math.round(naturalStep / rankStep) + minExplicitLevel;
+      effectiveLevel = Math.round(naturalStep / dagreRankStep) + minExplicitLevel;
     }
 
     if (!levelGroups[effectiveLevel]) {
@@ -93,6 +93,51 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
       effectiveLevel,
     });
   });
+
+  // Give edges leaving the same tier separate tracks. Reserve enough room for
+  // their labels, expanding the tier gap only when the channel gets crowded.
+  const levelByNodeId = Object.fromEntries(
+    Object.entries(levelGroups).flatMap(([level, items]) =>
+      items.map(({ node }) => [node.id, Number(level)])
+    )
+  );
+  const edgesBySourceLevel = new Map();
+  edges.forEach((edge, index) => {
+    const level = levelByNodeId[edge.source];
+    if (level === undefined) return;
+    if (!edgesBySourceLevel.has(level)) edgesBySourceLevel.set(level, []);
+    edgesBySourceLevel.get(level).push(index);
+  });
+  const laneOffsetByEdgeIndex = new Map();
+  const rankGapByLevel = new Map();
+  edgesBySourceLevel.forEach((indices, level) => {
+    // Horizontal labels sit beside their vertical tracks, so they need room
+    // for their full text width. Vertical labels only need their height.
+    const widestLabel = Math.max(
+      0,
+      ...indices.map((index) =>
+        edges[index].label ? 20 + String(edges[index].label).length * 6.7 : 0
+      )
+    );
+    const trackSpacing = isHorizontal
+      ? Math.max(36, widestLabel + 12)
+      : 36;
+    indices.forEach((edgeIndex, lane) => {
+      laneOffsetByEdgeIndex.set(
+        edgeIndex,
+        (lane - (indices.length - 1) / 2) * trackSpacing
+      );
+    });
+    rankGapByLevel.set(
+      level,
+      Math.max(
+        RANK_SEP,
+        (indices.length - 1) * trackSpacing +
+          (isHorizontal ? Math.max(64, widestLabel + 24) : 64)
+      )
+    );
+  });
+  const gapAfterLevel = (level) => rankGapByLevel.get(level) ?? RANK_SEP;
 
   // Calculate common center across all levels to keep the entire graph symmetrically centered
   const maxGroupCount = Math.max(
@@ -135,7 +180,12 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
 
   Object.keys(prePositions).forEach((nodeId) => {
     const { lvl, breadthPos, effectiveLevel } = prePositions[nodeId];
-    const rankPos = (lvl - minExplicitLevel) * rankStep + marginRank;
+    const extraGap = Array.from(rankGapByLevel).reduce(
+      (sum, [level, gap]) =>
+        level >= minExplicitLevel && level < lvl ? sum + gap - RANK_SEP : sum,
+      0
+    );
+    const rankPos = (lvl - minExplicitLevel) * dagreRankStep + extraGap + marginRank;
     const adjustedBreadth = breadthPos + marginBreadth;
 
     nodeLevels[nodeId] = effectiveLevel;
@@ -316,7 +366,7 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
 
     const sL = sCard.level;
     const tL = tCard.level;
-    const trackOffset = ((idx % 7) - 3) * 14;
+    const trackOffset = laneOffsetByEdgeIndex.get(idx) ?? 0;
 
     let points = [];
     let labelPos = { x: 0, y: 0 };
@@ -329,13 +379,33 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
       const ty = tCard.top;
 
       const sTier = tierMap[sL];
-      const nextTier = tierMap[sL + 1] || { minY: sy + RANK_SEP };
+      const nextTier = tierMap[sL + 1] || { minY: sy + gapAfterLevel(sL) };
       const exitChannelBase = (sTier.maxY + nextTier.minY) / 2;
       const exitY = Math.round(exitChannelBase + trackOffset);
 
       const levelDiff = tL - sL;
 
-      if (levelDiff === 1) {
+      if (levelDiff <= 0) {
+        // A same-tier or backward edge must go around the target before
+        // approaching its top handle. Otherwise it crosses the target card.
+        const corridorX = levelDiff === 0
+          ? tx >= sx
+            ? tCard.left - NODE_SEP / 2
+            : tCard.right + NODE_SEP / 2
+          : tx >= sx
+            ? Math.max(...cards.map((card) => card.right)) + NODE_SEP / 2
+            : Math.min(...cards.map((card) => card.left)) - NODE_SEP / 2;
+        const entryY = tCard.top - NODE_SEP / 2;
+        points = [
+          { x: sx, y: sy },
+          { x: sx, y: exitY },
+          { x: corridorX, y: exitY },
+          { x: corridorX, y: entryY },
+          { x: tx, y: entryY },
+          { x: tx, y: ty },
+        ];
+        labelPos = { x: (sx + corridorX) / 2, y: exitY };
+      } else if (levelDiff === 1) {
         // Direct adjacent tier
         points = [
           { x: sx, y: sy },
@@ -346,7 +416,7 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
         labelPos = { x: (sx + tx) / 2, y: exitY };
       } else {
         // Skipping tiers or same tier
-        const prevTier = tierMap[tL - 1] || { maxY: ty - RANK_SEP };
+        const prevTier = tierMap[tL - 1] || { maxY: ty - gapAfterLevel(tL - 1) };
         const tTier = tierMap[tL] || { minY: ty };
         const entryChannelBase = (prevTier.maxY + tTier.minY) / 2;
         const entryY = Math.round(entryChannelBase + trackOffset);
@@ -384,13 +454,36 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
       const ty = tCard.centerY;
 
       const sTier = tierMap[sL];
-      const nextTier = tierMap[sL + 1] || { minX: sx + RANK_SEP };
+      const nextTier = tierMap[sL + 1] || { minX: sx + gapAfterLevel(sL) };
       const exitChannelBase = (sTier.maxX + nextTier.minX) / 2;
       const exitX = Math.round(exitChannelBase + trackOffset);
 
       const levelDiff = tL - sL;
 
-      if (levelDiff === 1) {
+      if (levelDiff <= 0) {
+        // In LR mode the input handle is on the left. Approach it from the
+        // left, including when source and target share a tier.
+        const exitCorridorX = levelDiff === 0
+          ? exitX
+          : Math.max(...cards.map((card) => card.right)) + NODE_SEP / 2;
+        const corridorY = levelDiff === 0
+          ? ty >= sy
+            ? tCard.top - NODE_SEP / 2
+            : tCard.bottom + NODE_SEP / 2
+          : ty >= sy
+            ? Math.max(...cards.map((card) => card.bottom)) + NODE_SEP / 2
+            : Math.min(...cards.map((card) => card.top)) - NODE_SEP / 2;
+        const entryX = tCard.left - NODE_SEP / 2;
+        points = [
+          { x: sx, y: sy },
+          { x: exitCorridorX, y: sy },
+          { x: exitCorridorX, y: corridorY },
+          { x: entryX, y: corridorY },
+          { x: entryX, y: ty },
+          { x: tx, y: ty },
+        ];
+        labelPos = { x: exitCorridorX, y: (sy + corridorY) / 2 };
+      } else if (levelDiff === 1) {
         points = [
           { x: sx, y: sy },
           { x: exitX, y: sy },
@@ -399,7 +492,7 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
         ];
         labelPos = { x: exitX, y: (sy + ty) / 2 };
       } else {
-        const prevTier = tierMap[tL - 1] || { maxX: tx - RANK_SEP };
+        const prevTier = tierMap[tL - 1] || { maxX: tx - gapAfterLevel(tL - 1) };
         const tTier = tierMap[tL] || { minX: tx };
         const entryChannelBase = (prevTier.maxX + tTier.minX) / 2;
         const entryX = Math.round(entryChannelBase + trackOffset);

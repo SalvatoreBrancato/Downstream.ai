@@ -21,8 +21,8 @@ import SchemaForm, { makePayloadDrafts, validateSchema } from "@/components/Sche
 
 /**
  * JsonUploaderModal renders a full-height offcanvas drawer.
- * Runs Monaco Editor in native uncontrolled mode to eliminate any React re-render
- * race conditions (no cursor jumping, no deletion glitches, instant 60fps typing).
+ * Runs Monaco Editor in native uncontrolled mode so React updates do not
+ * replace the draft while the user types.
  * Also provides a structured form for editing agents and flows.
  */
 export default function JsonUploaderModal({ isOpen, onClose }) {
@@ -473,7 +473,6 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
                 domReadOnly: false,
                 minimap: { enabled: false },
                 fontSize: 13,
-                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                 scrollBeyondLastLine: false,
                 wordWrap: "on",
                 automaticLayout: true,
