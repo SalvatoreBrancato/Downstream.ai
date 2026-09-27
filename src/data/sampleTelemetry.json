@@ -1,0 +1,124 @@
+{
+  "agents": [
+    {
+      "id": "agent_1",
+      "name": "Data Quality Analyst",
+      "level": 0,
+      "role": "Ingestion & Sanitization",
+      "system_prompt": "Sei un analista esperto incaricato di validare, deduplicare e normalizzare feed finanziari eterogenei prima della distribuzione alla pipeline di intelligence.",
+      "last_input": {
+        "source": "Bloomberg & SEC Edgar API",
+        "timestamp": "2026-09-26T21:30:00Z",
+        "batch_size": 1500,
+        "format": "application/json",
+        "raw_data": {
+          "ticker": "NVDA",
+          "fiscal_quarter": "Q3",
+          "reported_revenue_usd": "35.1B",
+          "ebitda_margin": "62.4%",
+          "anomalies_detected": false
+        }
+      },
+      "last_output": {
+        "status": "success",
+        "clean_data": {
+          "symbol": "NVDA",
+          "normalized_revenue": 35100000000,
+          "growth_yoy": 0.94,
+          "sector": "Semiconductors & AI Hardware",
+          "confidence_score": 0.998
+        },
+        "validation_rules_passed": 14,
+        "processing_time_ms": 142
+      }
+    },
+    {
+      "id": "agent_2",
+      "name": "Sector Specialist",
+      "level": 1,
+      "role": "Vertical Intelligence",
+      "system_prompt": "Analizza i dati puliti per il settore di riferimento (Tech / Semiconductor). Contestualizza i multipli rispetto al benchmark storico e ai competitor.",
+      "last_input": {
+        "clean_data": {
+          "symbol": "NVDA",
+          "normalized_revenue": 35100000000,
+          "growth_yoy": 0.94,
+          "sector": "Semiconductors & AI Hardware"
+        },
+        "peer_group": ["AMD", "INTC", "TSM", "ARM"],
+        "sector_headwinds": ["export_controls", "power_constraints"]
+      },
+      "last_output": {
+        "sector": "Tech",
+        "market_share_estimate": "84.2%",
+        "insights": "Forte espansione trainata dai cluster Blackwell. Margini operativi oltre le stime di consenso (+180 bps vs peers).",
+        "competitive_moat": "Wide / CUDA ecosystem lock-in",
+        "recommendation_bias": "Overweight"
+      }
+    },
+    {
+      "id": "agent_3",
+      "name": "Risk Evaluator",
+      "level": 1,
+      "role": "Volatility & Stress Testing",
+      "system_prompt": "Valuta i fattori di rischio macroeconomico, concentrazione dei clienti e impatto normativo applicando modelli Monte Carlo.",
+      "last_input": {
+        "insights": "Forte espansione trainata dai cluster Blackwell...",
+        "risk_parameters": {
+          "beta": 1.68,
+          "var_95": "4.2%",
+          "customer_concentration_top4": "40%"
+        }
+      },
+      "last_output": {
+        "risk_rating": "Moderate-High",
+        "key_risks": [
+          "Dipendenza dalla capacità produttiva di TSMC CoWoS",
+          "Rischio geopolitico nello Stretto di Taiwan",
+          "Pressione CAPEX sui Cloud Hyper-scalers"
+        ],
+        "stress_test_passed": true,
+        "hedging_suggestion": "Collar strategy su scadenze a 90 giorni"
+      }
+    },
+    {
+      "id": "agent_4",
+      "name": "Executive Synthesizer",
+      "level": 2,
+      "role": "Report & Decision Engine",
+      "system_prompt": "Sintetizza i risultati di data quality, analisi settoriale e risk evaluation in un briefing esecutivo per il comitato investimenti.",
+      "last_input": {
+        "sector_insights": "Wide / CUDA ecosystem lock-in...",
+        "risk_profile": "Moderate-High / TSMC dependency",
+        "data_provenance": "Validated by Agent 1"
+      },
+      "last_output": {
+        "executive_summary": "Posizione solida con upside confermato. Monitorare attentamente allocazione supply chain Q4.",
+        "action_required": "APPROVE_ALLOCATION_TIER_1",
+        "audit_trace_id": "trace-8891-fc2a-9901"
+      }
+    }
+  ],
+  "flows": [
+    {
+      "source": "agent_1",
+      "target": "agent_2",
+      "label": "Dati Puliti"
+    },
+    {
+      "source": "agent_2",
+      "target": "agent_3",
+      "label": "Sector Insights"
+    },
+    {
+      "source": "agent_2",
+      "target": "agent_4",
+      "label": "Strategia Settoriale"
+    },
+    {
+      "source": "agent_3",
+      "target": "agent_4",
+      "label": "Risk Matrix"
+    }
+  ]
+}
