@@ -26,12 +26,8 @@ import sampleData from "@/data/sampleTelemetry.json";
  * Also provides an alternative standard Textarea view for maximum reliability.
  */
 export default function JsonUploaderModal({ isOpen, onClose }) {
-  const {
-    telemetryData,
-    loadCustomTelemetry,
-    resetToDefaultTelemetry,
-    theme,
-  } = useTelemetry();
+  const { telemetryData, loadCustomTelemetry, resetToDefaultTelemetry, theme } =
+    useTelemetry();
 
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -40,55 +36,31 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
   const [textareaContent, setTextareaContent] = useState("");
 
   const editorRef = useRef(null);
+  const draftRef = useRef("");
   const fileInputRef = useRef(null);
-  const modalContainerRef = useRef(null);
 
   // Sync content ONLY when the modal opens (never during typing!)
   useEffect(() => {
     if (isOpen) {
       const formatted = JSON.stringify(telemetryData, null, 2);
+      draftRef.current = formatted;
       setTextareaContent(formatted);
 
       if (editorRef.current) {
         editorRef.current.setValue(formatted);
-        setTimeout(() => {
-          editorRef.current?.focus();
-        }, 100);
       }
       setError(null);
       setSuccess(null);
+    } else {
+      editorRef.current = null;
     }
   }, [isOpen]);
-
-  // Isolate all keyboard events from escaping to document/window while modal is open
-  useEffect(() => {
-    if (!isOpen || !modalContainerRef.current) return;
-    const el = modalContainerRef.current;
-    const handleKeyCapture = (e) => {
-      // Allow Escape key to close modal
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-      // Stop keyboard event from bubbling/escaping to global document listeners
-      e.stopPropagation();
-    };
-    el.addEventListener("keydown", handleKeyCapture, true);
-    el.addEventListener("keyup", handleKeyCapture, true);
-    return () => {
-      el.removeEventListener("keydown", handleKeyCapture, true);
-      el.removeEventListener("keyup", handleKeyCapture, true);
-    };
-  }, [isOpen, onClose]);
 
   // Handle Monaco editor mount
   const handleEditorDidMount = (editor) => {
     editorRef.current = editor;
-    const formatted = JSON.stringify(telemetryData, null, 2);
-    editor.setValue(formatted);
-    setTimeout(() => {
-      editor.focus();
-    }, 100);
+    editor.setValue(draftRef.current);
+    editor.focus();
   };
 
   // Helper to extract current value from active editor mode
@@ -101,6 +73,7 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
 
   // Helper to set value on both editors
   const setCurrentValue = (text) => {
+    draftRef.current = text;
     setTextareaContent(text);
     if (editorRef.current) {
       editorRef.current.setValue(text);
@@ -111,12 +84,13 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
   const handleToggleMode = (mode) => {
     if (mode === editorMode) return;
     if (mode === "textarea") {
-      const val = editorRef.current ? editorRef.current.getValue() : textareaContent;
+      const val =
+        editorRef.current ? editorRef.current.getValue() : textareaContent;
+      draftRef.current = val;
       setTextareaContent(val);
+      editorRef.current = null;
     } else {
-      if (editorRef.current) {
-        editorRef.current.setValue(textareaContent);
-      }
+      draftRef.current = textareaContent;
     }
     setEditorMode(mode);
   };
@@ -202,17 +176,42 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
         agents: [
           {
             id: "agent_1",
-            name: "New Agent",
+            name: "First Agent",
+            description: "Estrae e normalizza dati",
             level: 0,
+            web_search: true,
+            tools: [
+              {
+                name: "data_parser",
+                description: "Estrae e formatta dati da sorgenti remote",
+              },
+            ],
             system_prompt: "Enter system prompt here...",
-            last_input: {},
-            last_output: {},
+            last_input: { example: "Input agent_1" },
+            last_output: { example: "Output agent_1" },
+          },
+          {
+            id: "agent_2",
+            name: "Second Agent",
+            description: "Analizza ed elabora i risultati",
+            level: 1,
+            web_search: false,
+            tools: [],
+            system_prompt: "Enter system prompt here...",
+            last_input: { example: "Input agent_2" },
+            last_output: { example: "Output agent_2" },
           },
         ],
-        flows: [],
+        flows: [
+          {
+            source: "agent_1",
+            target: "agent_2",
+            label: "Pipeline",
+          },
+        ],
       },
       null,
-      2
+      2,
     );
     setCurrentValue(blankTemplate);
     if (editorRef.current) {
@@ -228,7 +227,7 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "multi-agent-telemetry.json";
+      a.download = "Downstream_Schema_AI.json";
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -267,12 +266,15 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
 
   return (
     <div
-      ref={modalContainerRef}
       className="fixed inset-0 z-50 flex select-text"
       onKeyDownCapture={(e) => {
-        if (e.key !== "Escape") {
+        if (e.key === "Escape") {
           e.stopPropagation();
+          onClose();
         }
+      }}
+      onKeyDown={(e) => {
+        e.stopPropagation();
       }}
     >
       {/* Backdrop */}
@@ -295,7 +297,8 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
                   Load / Edit JSON Configuration
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Directly edit JSON code or load a ready-made configuration file.
+                  Directly edit JSON code or load a ready-made configuration
+                  file.
                 </p>
               </div>
             </div>
@@ -341,9 +344,9 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
                   type="button"
                   onClick={() => handleToggleMode("monaco")}
                   className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                    editorMode === "monaco"
-                      ? "bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 shadow-sm"
-                      : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+                    editorMode === "monaco" ?
+                      "bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 shadow-sm"
+                    : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
                   }`}
                   title="Monaco code editor with syntax highlighting"
                 >
@@ -354,9 +357,9 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
                   type="button"
                   onClick={() => handleToggleMode("textarea")}
                   className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                    editorMode === "textarea"
-                      ? "bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 shadow-sm"
-                      : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
+                    editorMode === "textarea" ?
+                      "bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 shadow-sm"
+                    : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
                   }`}
                   title="Native simple text editor"
                 >
@@ -366,7 +369,7 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
               </div>
 
               <Badge variant="purple" className="font-mono text-[10px]">
-                Supports &quot;level&quot;
+                Supports &quot;level&quot; • &quot;description&quot; • &quot;tools&quot; • &quot;web_search&quot;
               </Badge>
             </div>
 
@@ -439,13 +442,14 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
             </div>
           )}
 
-          {editorMode === "monaco" ? (
+          {editorMode === "monaco" ?
             <Editor
               height="100%"
               language="json"
               theme={theme === "light" ? "light" : "vs-dark"}
-              defaultValue={JSON.stringify(telemetryData, null, 2)}
+              defaultValue={draftRef.current}
               onMount={handleEditorDidMount}
+              onChange={(value) => { draftRef.current = value ?? ""; }}
               options={{
                 readOnly: false,
                 domReadOnly: false,
@@ -465,15 +469,17 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
                 selectOnLineNumbers: true,
               }}
             />
-          ) : (
-            <textarea
+          : <textarea
               value={textareaContent}
-              onChange={(e) => setTextareaContent(e.target.value)}
+              onChange={(e) => {
+                draftRef.current = e.target.value;
+                setTextareaContent(e.target.value);
+              }}
               placeholder="Paste or type your JSON here..."
               spellCheck="false"
               className="w-full h-full p-4 font-mono text-xs bg-transparent border-0 outline-none resize-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400 leading-relaxed select-text"
             />
-          )}
+          }
         </div>
 
         {/* Footer Actions */}

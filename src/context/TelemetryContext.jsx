@@ -15,7 +15,14 @@ function getInitialTelemetry() {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed && Array.isArray(parsed.agents)) {
-        return parsed;
+        // Se è la vecchia telemetria di default priva di description/tools, aggiorna ai nuovi campioni
+        const isLegacySample =
+          parsed.agents[0]?.id === "agent_1" &&
+          parsed.agents[0]?.role === "Ingestion & Sanitization" &&
+          !parsed.agents[0]?.description;
+        if (!isLegacySample) {
+          return parsed;
+        }
       }
     }
   } catch (err) {

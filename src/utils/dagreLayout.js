@@ -3,15 +3,15 @@ import dagre from "dagre";
 const NODE_WIDTH = 300;
 const NODE_HEIGHT = 180;
 const NODE_SEP = 80;
-const RANK_SEP = 110;
+const RANK_SEP = 130;
 
 /**
- * Calculates auto-layout positions for nodes using dagre.
- * Supports explicit "level" in node.data:
- * - If "level" is missing / null / empty, it respects the natural dagre topological layout.
- * - If "level" is defined, it forces the node into the specified tier/rank row (or column in LR).
- * - Ensures nodes sharing the same level never overlap horizontally.
- * 
+ * Calculates auto-layout positions for nodes and obstacle-avoiding edge corridors.
+ * - Aligns and centers all levels/tiers on a common center axis.
+ * - Ensures nodes never overlap.
+ * - Routes edges through the open corridors between cards without throwing everything to one side.
+ * - Staggers horizontal and vertical tracks so edges NEVER collinearly overlap.
+ *
  * @param {Array} nodes - Array of React Flow nodes
  * @param {Array} edges - Array of React Flow edges
  * @param {string} direction - 'TB' (top-to-bottom) or 'LR' (left-to-right)
@@ -42,36 +42,6 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
 
   dagre.layout(dagreGraph);
 
-  // Check if any node has an explicit level defined
-  const hasAnyExplicitLevel = nodes.some((node) => {
-    const lvl = node.data?.level;
-    return (
-      lvl !== undefined &&
-      lvl !== null &&
-      String(lvl).trim() !== "" &&
-      !isNaN(Number(lvl))
-    );
-  });
-
-  // Mode 1: No explicit level on any node -> 100% natural Dagre layout
-  if (!hasAnyExplicitLevel) {
-    const layoutedNodes = nodes.map((node) => {
-      const pos = dagreGraph.node(node.id);
-      return {
-        ...node,
-        targetPosition: isHorizontal ? "left" : "top",
-        sourcePosition: isHorizontal ? "right" : "bottom",
-        position: {
-          x: Math.round(pos.x - NODE_WIDTH / 2),
-          y: Math.round(pos.y - NODE_HEIGHT / 2),
-        },
-      };
-    });
-
-    return { nodes: layoutedNodes, edges };
-  }
-
-  // Mode 2: Custom level specified -> align nodes to explicit level and avoid overlaps
   const rankStep = (isHorizontal ? NODE_WIDTH : NODE_HEIGHT) + RANK_SEP;
   const breadthStep = (isHorizontal ? NODE_HEIGHT : NODE_WIDTH) + NODE_SEP;
 
@@ -88,16 +58,14 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
     })
     .map((node) => Number(node.data.level));
 
-  const minExplicitLevel = Math.min(...explicitLevels);
+  const minExplicitLevel =
+    explicitLevels.length > 0 ? Math.min(...explicitLevels) : 0;
 
   // Map each node to its effective level (explicit, or deduced naturally from Dagre)
   const levelGroups = {};
-  const dagreCoords = {};
 
   nodes.forEach((node) => {
     const pos = dagreGraph.node(node.id);
-    dagreCoords[node.id] = pos;
-
     const rawLvl = node.data?.level;
     const hasExp =
       rawLvl !== undefined &&
@@ -109,7 +77,6 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
     if (hasExp) {
       effectiveLevel = Number(rawLvl);
     } else {
-      // Deduce level from Dagre's natural rank spacing
       const naturalStep = isHorizontal
         ? pos.x - NODE_WIDTH / 2
         : pos.y - NODE_HEIGHT / 2;
@@ -123,12 +90,20 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
     levelGroups[effectiveLevel].push({
       node,
       breadth: isHorizontal ? pos.y : pos.x,
+      effectiveLevel,
     });
   });
 
-  const finalPositions = {};
+  // Calculate common center across all levels to keep the entire graph symmetrically centered
+  const maxGroupCount = Math.max(
+    ...Object.values(levelGroups).map((g) => g.length)
+  );
+  const maxTotalBreadth = (maxGroupCount - 1) * breadthStep;
+  const commonCenter = maxTotalBreadth / 2;
 
-  // For each level group, position nodes on the same rank coordinate and spread breadth
+  let minCalculatedBreadth = Infinity;
+  const prePositions = {};
+
   Object.keys(levelGroups).forEach((lvlKey) => {
     const lvl = Number(lvlKey);
     const items = levelGroups[lvl];
@@ -136,27 +111,46 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
     // Sort items by their natural breadth coordinate to preserve topological order
     items.sort((a, b) => a.breadth - b.breadth);
 
-    const rankPos = (lvl - minExplicitLevel) * rankStep;
     const count = items.length;
     const totalBreadth = (count - 1) * breadthStep;
-    const avgBreadth =
-      items.reduce((sum, item) => sum + item.breadth, 0) / count;
-    const startBreadth = avgBreadth - totalBreadth / 2;
+    const startBreadth = commonCenter - totalBreadth / 2;
 
     items.forEach((item, idx) => {
-      const breadthPos = startBreadth + idx * breadthStep;
-      if (isHorizontal) {
-        finalPositions[item.node.id] = {
-          x: Math.round(rankPos),
-          y: Math.round(breadthPos - NODE_HEIGHT / 2),
-        };
-      } else {
-        finalPositions[item.node.id] = {
-          x: Math.round(breadthPos - NODE_WIDTH / 2),
-          y: Math.round(rankPos),
-        };
+      const bPos = startBreadth + idx * breadthStep;
+      if (bPos < minCalculatedBreadth) {
+        minCalculatedBreadth = bPos;
       }
+      prePositions[item.node.id] = {
+        lvl,
+        breadthPos: bPos,
+        effectiveLevel: item.effectiveLevel,
+      };
     });
+  });
+
+  const marginBreadth = 80 - Math.min(0, minCalculatedBreadth);
+  const marginRank = 60;
+  const finalPositions = {};
+  const nodeLevels = {};
+
+  Object.keys(prePositions).forEach((nodeId) => {
+    const { lvl, breadthPos, effectiveLevel } = prePositions[nodeId];
+    const rankPos = (lvl - minExplicitLevel) * rankStep + marginRank;
+    const adjustedBreadth = breadthPos + marginBreadth;
+
+    nodeLevels[nodeId] = effectiveLevel;
+
+    if (isHorizontal) {
+      finalPositions[nodeId] = {
+        x: Math.round(rankPos),
+        y: Math.round(adjustedBreadth - NODE_HEIGHT / 2),
+      };
+    } else {
+      finalPositions[nodeId] = {
+        x: Math.round(adjustedBreadth - NODE_WIDTH / 2),
+        y: Math.round(rankPos),
+      };
+    }
   });
 
   const layoutedNodes = nodes.map((node) => ({
@@ -166,5 +160,289 @@ export function getLayoutedElements(nodes, edges, direction = "TB") {
     position: finalPositions[node.id],
   }));
 
-  return { nodes: layoutedNodes, edges };
+  // Build card representation for obstacle-avoidance corridor calculation
+  const cards = layoutedNodes.map((n) => ({
+    id: n.id,
+    level: nodeLevels[n.id] ?? 0,
+    left: n.position.x,
+    right: n.position.x + NODE_WIDTH,
+    top: n.position.y,
+    bottom: n.position.y + NODE_HEIGHT,
+    centerX: n.position.x + NODE_WIDTH / 2,
+    centerY: n.position.y + NODE_HEIGHT / 2,
+  }));
+
+  const cardMap = Object.fromEntries(cards.map((c) => [c.id, c]));
+
+  // Tier boundaries
+  const tierMap = {};
+  cards.forEach((c) => {
+    if (!tierMap[c.level]) {
+      tierMap[c.level] = {
+        minX: c.left,
+        maxX: c.right,
+        minY: c.top,
+        maxY: c.bottom,
+      };
+    } else {
+      tierMap[c.level].minX = Math.min(tierMap[c.level].minX, c.left);
+      tierMap[c.level].maxX = Math.max(tierMap[c.level].maxX, c.right);
+      tierMap[c.level].minY = Math.min(tierMap[c.level].minY, c.top);
+      tierMap[c.level].maxY = Math.max(tierMap[c.level].maxY, c.bottom);
+    }
+  });
+
+  function isVerticalClear(x, yStart, yEnd, ignoreIds = []) {
+    const minY = Math.min(yStart, yEnd);
+    const maxY = Math.max(yStart, yEnd);
+    const pad = 12;
+
+    for (const card of cards) {
+      if (ignoreIds.includes(card.id)) continue;
+      if (x >= card.left - pad && x <= card.right + pad) {
+        if (maxY > card.top + 2 && minY < card.bottom - 2) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function isHorizontalClear(y, xStart, xEnd, ignoreIds = []) {
+    const minX = Math.min(xStart, xEnd);
+    const maxX = Math.max(xStart, xEnd);
+    const pad = 12;
+
+    for (const card of cards) {
+      if (ignoreIds.includes(card.id)) continue;
+      if (y >= card.top - pad && y <= card.bottom + pad) {
+        if (maxX > card.left + 2 && minX < card.right - 2) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function findBestCorridorX(sourceX, targetX, yStart, yEnd, ignoreIds) {
+    if (isVerticalClear(targetX, yStart, yEnd, ignoreIds)) {
+      return targetX;
+    }
+    if (isVerticalClear(sourceX, yStart, yEnd, ignoreIds)) {
+      return sourceX;
+    }
+
+    const candidates = new Set();
+    const sorted = [...cards].sort((a, b) => a.left - b.left);
+
+    let minLeft = Infinity;
+    let maxRight = -Infinity;
+
+    for (let i = 0; i < sorted.length; i++) {
+      const c1 = sorted[i];
+      if (c1.left < minLeft) minLeft = c1.left;
+      if (c1.right > maxRight) maxRight = c1.right;
+
+      for (let j = i + 1; j < sorted.length; j++) {
+        const c2 = sorted[j];
+        if (c1.level === c2.level && c2.left > c1.right) {
+          candidates.add((c1.right + c2.left) / 2);
+        }
+      }
+    }
+
+    candidates.add(minLeft - 50);
+    candidates.add(maxRight + 50);
+
+    const clearList = Array.from(candidates).filter((x) =>
+      isVerticalClear(x, yStart, yEnd, ignoreIds)
+    );
+
+    if (clearList.length === 0) {
+      return targetX >= sourceX ? maxRight + 50 : minLeft - 50;
+    }
+
+    clearList.sort((a, b) => Math.abs(a - targetX) - Math.abs(b - targetX));
+    return clearList[0];
+  }
+
+  function findBestCorridorY(sourceY, targetY, xStart, xEnd, ignoreIds) {
+    if (isHorizontalClear(targetY, xStart, xEnd, ignoreIds)) {
+      return targetY;
+    }
+    if (isHorizontalClear(sourceY, xStart, xEnd, ignoreIds)) {
+      return sourceY;
+    }
+
+    const candidates = new Set();
+    const sorted = [...cards].sort((a, b) => a.top - b.top);
+
+    let minTop = Infinity;
+    let maxBottom = -Infinity;
+
+    for (let i = 0; i < sorted.length; i++) {
+      const c1 = sorted[i];
+      if (c1.top < minTop) minTop = c1.top;
+      if (c1.bottom > maxBottom) maxBottom = c1.bottom;
+
+      for (let j = i + 1; j < sorted.length; j++) {
+        const c2 = sorted[j];
+        if (c1.level === c2.level && c2.top > c1.bottom) {
+          candidates.add((c1.bottom + c2.top) / 2);
+        }
+      }
+    }
+
+    candidates.add(minTop - 50);
+    candidates.add(maxBottom + 50);
+
+    const clearList = Array.from(candidates).filter((y) =>
+      isHorizontalClear(y, xStart, xEnd, ignoreIds)
+    );
+
+    if (clearList.length === 0) {
+      return targetY >= sourceY ? maxBottom + 50 : minTop - 50;
+    }
+
+    clearList.sort((a, b) => Math.abs(a - targetY) - Math.abs(b - targetY));
+    return clearList[0];
+  }
+
+  // Generate clean, non-overlapping corridor-routed edges
+  const layoutedEdges = edges.map((edge, idx) => {
+    const sCard = cardMap[edge.source];
+    const tCard = cardMap[edge.target];
+    if (!sCard || !tCard) return edge;
+
+    const sL = sCard.level;
+    const tL = tCard.level;
+    const trackOffset = ((idx % 7) - 3) * 14;
+
+    let points = [];
+    let labelPos = { x: 0, y: 0 };
+
+    if (!isHorizontal) {
+      // Top-to-Bottom (TB) Mode
+      const sx = sCard.centerX;
+      const sy = sCard.bottom;
+      const tx = tCard.centerX;
+      const ty = tCard.top;
+
+      const sTier = tierMap[sL];
+      const nextTier = tierMap[sL + 1] || { minY: sy + RANK_SEP };
+      const exitChannelBase = (sTier.maxY + nextTier.minY) / 2;
+      const exitY = Math.round(exitChannelBase + trackOffset);
+
+      const levelDiff = tL - sL;
+
+      if (levelDiff === 1) {
+        // Direct adjacent tier
+        points = [
+          { x: sx, y: sy },
+          { x: sx, y: exitY },
+          { x: tx, y: exitY },
+          { x: tx, y: ty },
+        ];
+        labelPos = { x: (sx + tx) / 2, y: exitY };
+      } else {
+        // Skipping tiers or same tier
+        const prevTier = tierMap[tL - 1] || { maxY: ty - RANK_SEP };
+        const tTier = tierMap[tL] || { minY: ty };
+        const entryChannelBase = (prevTier.maxY + tTier.minY) / 2;
+        const entryY = Math.round(entryChannelBase + trackOffset);
+
+        const corridorBase = findBestCorridorX(sx, tx, sy, ty, [sCard.id, tCard.id]);
+        const corridorTrack = Math.round(corridorBase + ((idx % 3) - 1) * 12);
+
+        if (corridorBase === tx) {
+          // Direct vertical drop is completely clear
+          points = [
+            { x: sx, y: sy },
+            { x: sx, y: exitY },
+            { x: tx, y: exitY },
+            { x: tx, y: ty },
+          ];
+          labelPos = { x: (sx + tx) / 2, y: exitY };
+        } else {
+          // Passes through clear corridor between cards
+          points = [
+            { x: sx, y: sy },
+            { x: sx, y: exitY },
+            { x: corridorTrack, y: exitY },
+            { x: corridorTrack, y: entryY },
+            { x: tx, y: entryY },
+            { x: tx, y: ty },
+          ];
+          labelPos = { x: (sx + corridorTrack) / 2, y: exitY };
+        }
+      }
+    } else {
+      // Left-to-Right (LR) Mode
+      const sx = sCard.right;
+      const sy = sCard.centerY;
+      const tx = tCard.left;
+      const ty = tCard.centerY;
+
+      const sTier = tierMap[sL];
+      const nextTier = tierMap[sL + 1] || { minX: sx + RANK_SEP };
+      const exitChannelBase = (sTier.maxX + nextTier.minX) / 2;
+      const exitX = Math.round(exitChannelBase + trackOffset);
+
+      const levelDiff = tL - sL;
+
+      if (levelDiff === 1) {
+        points = [
+          { x: sx, y: sy },
+          { x: exitX, y: sy },
+          { x: exitX, y: ty },
+          { x: tx, y: ty },
+        ];
+        labelPos = { x: exitX, y: (sy + ty) / 2 };
+      } else {
+        const prevTier = tierMap[tL - 1] || { maxX: tx - RANK_SEP };
+        const tTier = tierMap[tL] || { minX: tx };
+        const entryChannelBase = (prevTier.maxX + tTier.minX) / 2;
+        const entryX = Math.round(entryChannelBase + trackOffset);
+
+        const corridorBase = findBestCorridorY(sy, ty, sx, tx, [sCard.id, tCard.id]);
+        const corridorTrack = Math.round(corridorBase + ((idx % 3) - 1) * 12);
+
+        if (corridorBase === ty) {
+          points = [
+            { x: sx, y: sy },
+            { x: exitX, y: sy },
+            { x: exitX, y: ty },
+            { x: tx, y: ty },
+          ];
+          labelPos = { x: exitX, y: (sy + ty) / 2 };
+        } else {
+          points = [
+            { x: sx, y: sy },
+            { x: exitX, y: sy },
+            { x: exitX, y: corridorTrack },
+            { x: entryX, y: corridorTrack },
+            { x: entryX, y: ty },
+            { x: tx, y: ty },
+          ];
+          labelPos = { x: exitX, y: (sy + corridorTrack) / 2 };
+        }
+      }
+    }
+
+    return {
+      ...edge,
+      type: "smartEdge",
+      data: {
+        ...(edge.data || {}),
+        points,
+        labelPos,
+        sourceLevel: sL,
+        targetLevel: tL,
+        direction,
+        edgeIndex: idx,
+      },
+    };
+  });
+
+  return { nodes: layoutedNodes, edges: layoutedEdges };
 }

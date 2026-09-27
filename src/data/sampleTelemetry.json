@@ -3,8 +3,19 @@
     {
       "id": "agent_1",
       "name": "Data Quality Analyst",
+      "description": "Valida, deduplica e normalizza feed finanziari eterogenei prima della distribuzione.",
       "level": 0,
-      "role": "Ingestion & Sanitization",
+      "web_search": true,
+      "tools": [
+        {
+          "name": "bloomberg_feed_parser",
+          "description": "Normalizza stream di dati e messaggistica in tempo reale via Bloomberg API"
+        },
+        {
+          "name": "sec_edgar_crawler",
+          "description": "Estrae filing periodici 10-K e 10-Q dai registri ufficiali della SEC"
+        }
+      ],
       "system_prompt": "Sei un analista esperto incaricato di validare, deduplicare e normalizzare feed finanziari eterogenei prima della distribuzione alla pipeline di intelligence.",
       "last_input": {
         "source": "Bloomberg & SEC Edgar API",
@@ -35,8 +46,15 @@
     {
       "id": "agent_2",
       "name": "Sector Specialist",
+      "description": "Analizza metriche di settore Tech/Semiconductor e intelligence competitiva.",
       "level": 1,
-      "role": "Vertical Intelligence",
+      "web_search": true,
+      "tools": [
+        {
+          "name": "peer_benchmarker",
+          "description": "Compara multipli operativi (EV/EBITDA, P/E) rispetto ai competitor diretti"
+        }
+      ],
       "system_prompt": "Analizza i dati puliti per il settore di riferimento (Tech / Semiconductor). Contestualizza i multipli rispetto al benchmark storico e ai competitor.",
       "last_input": {
         "clean_data": {
@@ -59,8 +77,15 @@
     {
       "id": "agent_3",
       "name": "Risk Evaluator",
+      "description": "Valuta fattori di rischio macroeconomico, supply chain e stress test Monte Carlo.",
       "level": 1,
-      "role": "Volatility & Stress Testing",
+      "web_search": false,
+      "tools": [
+        {
+          "name": "monte_carlo_engine",
+          "description": "Esegue 10.000 simulazioni stocastiche per calcolare Value at Risk (VaR 95%)"
+        }
+      ],
       "system_prompt": "Valuta i fattori di rischio macroeconomico, concentrazione dei clienti e impatto normativo applicando modelli Monte Carlo.",
       "last_input": {
         "insights": "Forte espansione trainata dai cluster Blackwell...",
@@ -84,8 +109,15 @@
     {
       "id": "agent_4",
       "name": "Executive Synthesizer",
+      "description": "Sintetizza i report verticali in raccomandazioni esecutive per gli investitori.",
       "level": 2,
-      "role": "Report & Decision Engine",
+      "web_search": false,
+      "tools": [
+        {
+          "name": "executive_report_builder",
+          "description": "Compila il briefing esecutivo formattato e genera l'audit trace crittografico"
+        }
+      ],
       "system_prompt": "Sintetizza i risultati di data quality, analisi settoriale e risk evaluation in un briefing esecutivo per il comitato investimenti.",
       "last_input": {
         "sector_insights": "Wide / CUDA ecosystem lock-in...",

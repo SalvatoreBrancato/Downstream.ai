@@ -10,10 +10,16 @@ import {
 } from "@xyflow/react";
 import { useTelemetry } from "@/context/TelemetryContext";
 import CustomNode from "@/components/CustomNode";
+import SmartEdge from "@/components/SmartEdge";
 import { getLayoutedElements } from "@/utils/dagreLayout";
 
 const nodeTypes = {
   agentNode: CustomNode,
+};
+
+const edgeTypes = {
+  smartEdge: SmartEdge,
+  smoothstep: SmartEdge,
 };
 
 /**
@@ -50,7 +56,7 @@ export default function TelemetryMap() {
       source: flow.source,
       target: flow.target,
       label: flow.label || "",
-      type: "smoothstep",
+      type: "smartEdge",
       markerEnd: {
         type: MarkerType.ArrowClosed,
         width: 16,
@@ -238,8 +244,10 @@ export default function TelemetryMap() {
         nodes={nodes}
         edges={styledEdges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        nodesDraggable={false}
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
         deleteKeyCode={null}
@@ -249,7 +257,7 @@ export default function TelemetryMap() {
         fitViewOptions={{ padding: 0.25 }}
         minZoom={0.2}
         maxZoom={1.5}
-        defaultEdgeOptions={{ type: "smoothstep" }}
+        defaultEdgeOptions={{ type: "smartEdge" }}
         className={isLight ? "bg-[#f8fafc]" : "bg-[#02040a]"}
       >
         <Background
