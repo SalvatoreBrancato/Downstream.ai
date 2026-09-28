@@ -112,6 +112,15 @@ export function TelemetryProvider({ children }) {
     }));
   };
 
+  const setAgentModel = (agentId, modelId) => {
+    setTelemetryData((prev) => ({
+      ...prev,
+      agents: prev.agents.map((agent) =>
+        agent.id === agentId ? { ...agent, model_id: modelId } : agent
+      ),
+    }));
+  };
+
   const toggleLayoutDirection = () => {
     setLayoutDirection((prev) => (prev === "TB" ? "LR" : "TB"));
   };
@@ -171,6 +180,7 @@ export function TelemetryProvider({ children }) {
         openInspector,
         closeInspector,
         setInspectorTab,
+        setAgentModel,
         loadCustomTelemetry,
         resetToDefaultTelemetry,
         isSavedInCache,

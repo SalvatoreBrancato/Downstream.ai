@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import Editor from "@monaco-editor/react";
 import {
   Sheet,
@@ -23,21 +23,28 @@ import {
   Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { countTokens } from "@/utils/tokenCounter";
+import { MODEL_GROUPS, MODEL_PRICES, estimateCost, formatUsd, getRates, payloadText } from "@/utils/modelPricing";
+import { useAgentTokenCounts } from "@/utils/useAgentTokenCounts";
 
 /**
  * InspectorSheet displays an offcanvas drawer with formatted JSON payloads,
  * system prompt, and tools/functions cards with descriptions.
  */
 export default function InspectorSheet() {
-  const { inspectorState, closeInspector, setInspectorTab, theme } =
+  const { inspectorState, closeInspector, setInspectorTab, setAgentModel, telemetryData, theme } =
     useTelemetry();
-  const { isOpen, agent, tab } = inspectorState;
+  const { isOpen, tab } = inspectorState;
+  const agent = telemetryData.agents.find((item) => item.id === inspectorState.agent?.id) || inspectorState.agent;
 
   const [copied, setCopied] = useState(false);
   const [toolsViewMode, setToolsViewMode] = useState("cards"); // 'cards' | 'json'
-  const [tokenCount, setTokenCount] = useState(null);
-  const [tokenError, setTokenError] = useState(false);
+  const { counts, error: tokenError } = useAgentTokenCounts(agent, isOpen);
+  const tokenCount = counts?.[tab] ?? null;
+  const model = MODEL_PRICES[agent?.model_id];
+  const rates = getRates(model, (counts?.input ?? 0) + (counts?.system_prompt ?? 0));
+  const price = rates && tokenCount !== null
+    ? estimateCost(tokenCount, tab === "output" ? rates.output : rates.input)
+    : null;
 
   // Compute displayed content and language based on active tab
   const { content, language, tabLabel } = useMemo(() => {
@@ -49,9 +56,7 @@ export default function InspectorSheet() {
       const val = agent.last_input;
       return {
         content:
-          typeof val === "object"
-            ? JSON.stringify(val, null, 2)
-            : String(val || "{}"),
+          payloadText(val),
         language: "json",
         tabLabel: "Last Input Payload",
         icon: ArrowDownToDot,
@@ -62,9 +67,7 @@ export default function InspectorSheet() {
       const val = agent.last_output;
       return {
         content:
-          typeof val === "object"
-            ? JSON.stringify(val, null, 2)
-            : String(val || "{}"),
+          payloadText(val),
         language: "json",
         tabLabel: "Last Output Payload",
         icon: ArrowUpFromDot,
@@ -89,26 +92,6 @@ export default function InspectorSheet() {
       icon: Terminal,
     };
   }, [agent, tab]);
-
-  useEffect(() => {
-    if (!isOpen || !agent || tab === "tools") return;
-
-    let cancelled = false;
-    setTokenCount(null);
-    setTokenError(false);
-    const text = tab === "system_prompt" && !agent.system_prompt ? "" : content;
-
-    countTokens(text)
-      .then((count) => {
-        if (!cancelled) setTokenCount(count);
-      })
-      .catch((error) => {
-        console.error("Failed to count tokens:", error);
-        if (!cancelled) setTokenError(true);
-      });
-
-    return () => { cancelled = true; };
-  }, [isOpen, agent, tab, content]);
 
   const handleCopy = async () => {
     if (!content) return;
@@ -278,7 +261,7 @@ export default function InspectorSheet() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap justify-end">
             {tab === "tools" && (
               <div className="inline-flex rounded p-0.5 bg-slate-200/70 dark:bg-slate-800 border border-slate-300/70 dark:border-slate-700 text-[10px]">
                 <button
@@ -305,6 +288,29 @@ export default function InspectorSheet() {
                 </button>
               </div>
             )}
+            {tab !== "tools" && (
+              <label className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="sr-only">Modello per {agent.name}</span>
+                <select
+                  aria-label={`Modello per ${agent.name}`}
+                  value={agent.model_id || ""}
+                  onChange={(event) => setAgentModel(agent.id, event.target.value)}
+                  title="Prezzi API standard in USD per 1 milione di token. DeepSeek: fascia di picco senza cache. Gemini 3.8 Flash: prezzo introduttivo fino al 31/12/2026."
+                  className="max-w-48 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <option value="">Seleziona modello</option>
+                  {MODEL_GROUPS.map((group) => (
+                    <optgroup key={group.provider} label={group.provider}>
+                      {group.models.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label} · ${item.input}/${item.output} per 1M
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="font-mono text-[11px] text-slate-500 flex items-center gap-2 whitespace-nowrap">
               {tab !== "tools" && (
                 <>
@@ -315,6 +321,11 @@ export default function InspectorSheet() {
                         ? "≈ … tokens"
                         : `≈ ${tokenCount.toLocaleString()} tokens`}
                   </span>
+                  {model && (
+                    <span title="Stima USD basata sul testo visibile e sul prezzo API standard. Esclude cache, tool e token non visibili.">
+                      ≈ {price === null ? "…" : formatUsd(price)}
+                    </span>
+                  )}
                   <span className="text-slate-400 dark:text-slate-600">•</span>
                 </>
               )}
@@ -332,24 +343,24 @@ export default function InspectorSheet() {
                   <Boxes className="w-6 h-6" />
                 </div>
                 <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">
-                  Nessun Tool Configurato
+                  No Tools Configured
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
-                  Questo agente non ha funzioni o tool registrati. Puoi
-                  aggiungerli specificando l&apos;array{" "}
+                  This agent has no registered functions or tools. You can add
+                  them by specifying the{" "}
                   <code className="text-sky-500 font-mono">tools: [...]</code>{" "}
-                  nello schema JSON.
+                  array in the JSON schema.
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center justify-between pb-1">
                   <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Funzioni Registrate ({toolsList.length})
+                    Registered Functions ({toolsList.length})
                   </span>
                   {agent.web_search && (
                     <span className="text-[11px] font-mono text-sky-600 dark:text-sky-400 flex items-center gap-1">
-                      <Globe className="w-3 h-3" /> Web Search attiva
+                      <Globe className="w-3 h-3" /> Web Search active
                     </span>
                   )}
                 </div>
@@ -380,7 +391,7 @@ export default function InspectorSheet() {
                       {tool.description ? (
                         <div className="bg-white dark:bg-slate-950/70 p-3 rounded-lg border border-slate-200/80 dark:border-slate-800/80">
                           <span className="text-[10px] uppercase font-semibold tracking-wider text-slate-400 block mb-1">
-                            Descrizione Funzione
+                            Function Description
                           </span>
                           <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
                             {tool.description}
@@ -388,7 +399,7 @@ export default function InspectorSheet() {
                         </div>
                       ) : (
                         <p className="text-xs italic text-slate-400 dark:text-slate-500">
-                          Nessuna descrizione specificata per questa funzione.
+                          No description specified for this function.
                         </p>
                       )}
                     </div>

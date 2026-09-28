@@ -72,7 +72,14 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
   };
 
   const getValidatedData = () => {
-    const parsed = editorMode === "form" ? formData : JSON.parse(getCurrentValue());
+    const raw = editorMode === "form" ? formData : JSON.parse(getCurrentValue());
+    const parsed = {
+      ...raw,
+      agents: (raw.agents ?? []).map((ag) => ({
+        ...ag,
+        level: ag.level === "" ? 0 : ag.level,
+      })),
+    };
     const validationError = validateSchema(parsed);
     if (validationError) throw new Error(validationError);
     return parsed;
@@ -108,14 +115,21 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
         setPayloadDrafts(makePayloadDrafts(parsed));
       editorRef.current = null;
       } else {
-        const validationError = validateSchema(formData);
+        const sanitized = {
+          ...formData,
+          agents: (formData.agents ?? []).map((ag) => ({
+            ...ag,
+            level: ag.level === "" ? 0 : ag.level,
+          })),
+        };
+        const validationError = validateSchema(sanitized);
         if (validationError) throw new Error(validationError);
-        draftRef.current = JSON.stringify(formData, null, 2);
+        draftRef.current = JSON.stringify(sanitized, null, 2);
       }
       setEditorMode(mode);
       setError(null);
     } catch (err) {
-      setError(`Impossibile cambiare vista: ${err.message}`);
+      setError(`Unable to switch view: ${err.message}`);
     }
   };
 
@@ -199,13 +213,13 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
           {
             id: "agent_1",
             name: "First Agent",
-            description: "Estrae e normalizza dati",
+            description: "Extracts and normalizes data",
             level: 0,
             web_search: true,
             tools: [
               {
                 name: "data_parser",
-                description: "Estrae e formatta dati da sorgenti remote",
+                description: "Extracts and formats data from remote sources",
               },
             ],
             system_prompt: "Enter system prompt here...",
@@ -215,7 +229,7 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
           {
             id: "agent_2",
             name: "Second Agent",
-            description: "Analizza ed elabora i risultati",
+            description: "Analyzes and processes results",
             level: 1,
             web_search: false,
             tools: [],
@@ -254,7 +268,7 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setError(`Impossibile esportare: ${err.message}`);
+      setError(`Unable to export: ${err.message}`);
     }
   };
 
@@ -270,7 +284,7 @@ export default function JsonUploaderModal({ isOpen, onClose }) {
         onClose();
       }, 600);
     } catch (err) {
-      setError(`Impossibile applicare lo schema: ${err.message}`);
+      setError(`Unable to apply schema: ${err.message}`);
     }
   };
 
