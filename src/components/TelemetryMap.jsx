@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useCallback, useRef } from "react";
+import React, { useMemo, useEffect, useCallback } from "react";
 import {
   ReactFlow,
   Background,
@@ -37,7 +37,6 @@ export default function TelemetryMap() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const flowRef = useRef(null);
 
   // Compute base nodes and edges from telemetryData
   const { rawNodes, rawEdges } = useMemo(() => {
@@ -81,14 +80,6 @@ export default function TelemetryMap() {
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
   }, [rawNodes, rawEdges, layoutDirection, setNodes, setEdges]);
-
-  useEffect(() => {
-    if (nodes.length === 0) return;
-    const frame = requestAnimationFrame(() => {
-      flowRef.current?.fitView({ padding: 0.25, duration: 250 });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [nodes, layoutDirection]);
 
   // Update edges dynamically based on selectedAgentId and theme
   const styledEdges = useMemo(() => {
@@ -250,7 +241,6 @@ export default function TelemetryMap() {
   return (
     <div className="w-full h-full relative">
       <ReactFlow
-        onInit={(instance) => { flowRef.current = instance; }}
         nodes={nodes}
         edges={styledEdges}
         nodeTypes={nodeTypes}
